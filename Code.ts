@@ -27,12 +27,14 @@ const TEST_SHEET_ID = "1HLcJK_IHJ0OUfVlzLNJCJrgKW9A4thmhblTpp0avLaw";  // https:
 // Audit date used for tests.
 const TEST_DATE = new Date(2020, 5 - 1 /* js sucks */, 10);
 
+type RichTextValue = GoogleAppsScript.Spreadsheet.RichTextValue;
+
 // Setup code for the web app associated with this project.
 // https://developers.google.com/apps-script/guides/html#code.gs_1
 function doGet() {
   return HtmlService.createTemplateFromFile('Index').evaluate();
 }
-function include(filename) {
+function include(filename: string) {
   return HtmlService.createHtmlOutputFromFile(filename)
       .getContent();
 }
@@ -41,7 +43,7 @@ function include(filename) {
 //
 // The audit must be run two days following the due date specified in the column header.
 // (This gives housemates at least one extra day to mark chores off on the chart.)
-function weeklyAudit(e, sheetId = SHEET_ID, auditDate = addDays(today(), -2)) { 
+function weeklyAudit(e: {}, sheetId = SHEET_ID, auditDate = addDays(today(), -2)) { 
   fillEmptyCells(sheetId, auditDate);
   if (!isDisabled(sheetId)) {
     sendEmailReport(getReport(sheetId, auditDate));
@@ -61,7 +63,7 @@ function TEST_weeklyAudit() {
 //
 // Email reminders must be sent on the of the due date. When it is run, it looks for a column
 // with today's date.
-function sendChoreReminders(e, sheetId = SHEET_ID, auditDate = today()) {
+function sendChoreReminders(e: unknown, sheetId = SHEET_ID, auditDate = today()) {
   if (isDisabled(sheetId)) return;
 
   const report = getReport(sheetId, auditDate);
@@ -87,7 +89,7 @@ function TEST_sendChoreReminders() {
 // if any cells are blank.
 // The message may imply that chores are already due and the chart should
 // merely be updated before the report goes out.
-function sendUpdateChartReminders(_: any, sheetId = SHEET_ID, auditDate = addDays(today(), -1)) {
+function sendUpdateChartReminders(e: unknown, sheetId = SHEET_ID, auditDate = addDays(today(), -1)) {
   if (isDisabled(sheetId)) return;
 
   const report = getReport(sheetId, auditDate);
@@ -121,7 +123,7 @@ function TEST_sendChartUpdateReminders() {
 // Sends a chore audit report to everyone for the given due date for a week of chores.
 // Includes who did their chores and who didn't.
 // Also, indicates who missed two weeks in a row.
-function sendEmailReport(report) {
+function sendEmailReport(report: Report) {
   const chores = report.chores;
   const recipients = chores.map(chore => chore.person.email).filter(email => email !== '').join(',');
   if (recipients.length === 0) return;  // Can happen if no one has chores.
@@ -160,18 +162,25 @@ function dateOnly(date: Date) {
 function today() {
   return dateOnly(new Date());
 }
-              
+
 function addDays(date: Date, numDays: number) {
   const newDate = dateOnly(date);
   // Subtract 1 calendar day.
   newDate.setDate(newDate.getDate() + numDays);
   return newDate;
 }
-              
-function isDisabled(sheetId) {
+
+function isDisabled(sheetId: string) {
   const sheet = getConfigSheet(sheetId);
 
   return sheet.getRange("B1").getValue() === true;
+}
+
+// getLinkUrl is a new function in the library and is undocumented.
+declare namespace GoogleAppsScript.Spreadsheet {
+  class RichTextValue {
+    getLinkUrl(): string;
+  }
 }
 
 // Reports on chores for the week specified by auditDate - who was on time,
@@ -179,7 +188,7 @@ function isDisabled(sheetId) {
 // Returns an array of { person: { name: string, email: string }, late: number }
 // where `late` is 0 if not late, 1 if late this week only, and 2 if late twice
 // in a row.
-function getReport(sheetId, auditDate) {
+function getReport(sheetId: string, auditDate: Date): Report {
   const sheet = getChoresSheet(sheetId);
   
   // Get the list of dates in the column headers.
@@ -187,7 +196,7 @@ function getReport(sheetId, auditDate) {
       .getValues()[0] /* 2D array has only one row; just get the row */;
   
   // Find the column for the audit date.
-  const dateColumn = dates.findIndex(v => v.getTime() === auditDate.getTime());
+  const dateColumn = dates.findIndex((v: Date) => v.getTime() === auditDate.getTime());
   if (dateColumn === -1) throw new Error(`Could not find column for audit date of ${auditDate}.`);
   const previousDateColumn = dateColumn - 1;
   if (previousDateColumn < 0) throw new Error('Previous week column must be to the left of the audit date, but the audit date is already on the left edge of the sheet.');
@@ -197,12 +206,12 @@ function getReport(sheetId, auditDate) {
   // Get all names and emails.
   const personCells = sheet.getRange(NAMES_AND_EMAILS_RANGE).getRichTextValues()
       // Flatten 2D array with 1 column into a 1D array.
-      .map(a => a[0]);
+      .map((a: (RichTextValue|null)[]) => a[0]);
 
   // Get the names of the chores. Parallel array with `personCells`.
   const choreDescriptions = sheet.getRange(CHORE_TITLES_RANGE).getValues()
       // Flatten 2D array with 1 column into a 1D array.
-      .map(a => a[0]);
+      .map((a: string[]) => a[0]);
   
   // Get two full columns of statuses for the audit week and the previous week.
   const statuses = sheet.getSheetValues(2, 3 + previousDateColumn, personCells.length, 2);
@@ -212,11 +221,11 @@ function getReport(sheetId, auditDate) {
   // Iterate through people in column A.
   for (let i = 0; i < personCells.length; i++) {
     const personCell = personCells[i];
-    if (personCell.getText() === '') continue;
+    if (personCell!.getText() === '') continue;
     
     // First, extract email and name for each row.
-    const name = personCell.getText();
-    const linkUrl = personCell.getLinkUrl();
+    const name = personCell!.getText();
+    const linkUrl = personCell!.getLinkUrl();
     let email = '';
     if (linkUrl != null && linkUrl.startsWith("mailto:")) {
       email = linkUrl.substring(7);
@@ -251,20 +260,31 @@ function getReport(sheetId, auditDate) {
   return {auditDate, chores};
 }
 
-function addWeeks(date, numWeeks) {
+type Report = {
+  auditDate: Date;
+  chores: Chore[];
+}
+type Chore = {
+  person: { name: string, email: string };
+  description: string;
+  late: number;
+  auditWeekStatus: string;
+}
+
+function addWeeks(date: Date, numWeeks: number) {
   const previousWeek = new Date(date.getTime());
   previousWeek.setDate(previousWeek.getDate() + (7 * numWeeks));
   return previousWeek;
 }
 
-function isLate(status) {
+function isLate(status: string) {
   return status === '' || status === 'Done (unexcused late)' || status === 'Pending (unexcused late)';
 }
 
 // Make explicit the status of empty cells. If a person has chores
 // and they didn't update the chart, mark them as late. If they
 // don't have chores, mark them as pardoned.
-function fillEmptyCells(sheetId, auditDate) {
+function fillEmptyCells(sheetId: string, auditDate: Date) {
   const sheet = getChoresSheet(sheetId);
   
   // Get the list of dates in the column headers.
@@ -272,23 +292,23 @@ function fillEmptyCells(sheetId, auditDate) {
       .getValues()[0] /* 2D array has only one row; just get the row */;
   
   // Find the column for the audit date.
-  const dateColumn = dates.findIndex(v => v.getTime() === auditDate.getTime());
+  const dateColumn = dates.findIndex((v: Date) => v.getTime() === auditDate.getTime());
   if (dateColumn === -1) throw new Error(`Could not find column for audit date of ${auditDate}.`);
 
   // Get all names and emails.
   const personCells = sheet.getRange(NAMES_AND_EMAILS_RANGE).getValues()
       // Flatten 2D array with 1 column into a 1D array.
-      .map(a => a[0]);
+      .map((a: (RichTextValue|null)[]) => a[0]);
   // Get the names of the chores. Parallel array with `personCells`.
   const choreDescriptions = sheet.getRange(CHORE_TITLES_RANGE).getValues()
       // Flatten 2D array with 1 column into a 1D array.
-      .map(a => a[0]);
+      .map((a: string[]) => a[0]);
 
   const statusesRange = sheet.getRange(2, 3 + dateColumn, personCells.length, 1);
   const statuses = statusesRange.getValues();
   for (let i = 0; i < statuses.length; i++) {
     // Skip if there is no person / chore on this row.
-    if (personCells[i] === '') continue;
+    if (personCells[i]?.getText() === '') continue;
 
     // Person has no chores assigned.
     if (choreDescriptions[i] === '') {
@@ -310,7 +330,7 @@ function fillEmptyCells(sheetId, auditDate) {
 // - Adds columns for the next audit date with data validation.
 // - Also add columns for several future weeks after the next audit date so people can be excused in advance. 
 // - Add rows in case any rows were deleted due to move outs. (Users can delete rows in the protected sheet, but not add new ones.)
-function prepareNextWeek(sheetId, nextAuditDate) {
+function prepareNextWeek(sheetId: string, nextAuditDate: Date) {
   const sheet = getChoresSheet(sheetId);
 
   // Delete old columns.
@@ -329,7 +349,7 @@ function prepareNextWeek(sheetId, nextAuditDate) {
   }
         
   // Add new columns.
-  let lastDate = '';
+  let lastDate: '' | Date = '';
   for (let i = 3; i <= 2 + MIN_STATUS_COLUMNS; i++) {
     let dateValue = sheet.getRange(1, i).getValue();
     if (dateValue === '' && lastDate !== '') {
@@ -357,17 +377,17 @@ function prepareNextWeek(sheetId, nextAuditDate) {
   }
 }
         
-function getSheetByName(sheetId, name) {
+function getSheetByName(sheetId: string, name: string) {
   const sheet = SpreadsheetApp.openById(sheetId).getSheetByName(name);
   if (sheet == null) throw new Error('Could not find the "Chores" sheet.');
 
   return sheet;
 }
         
-function getChoresSheet(sheetId) {
+function getChoresSheet(sheetId: string) {
   return getSheetByName(sheetId, "Weekly chores");
 }
 
-function getConfigSheet(sheetId) {
+function getConfigSheet(sheetId: string) {
   return getSheetByName(sheetId, "Configuration");
 }
