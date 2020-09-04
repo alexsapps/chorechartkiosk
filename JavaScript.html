@@ -1,10 +1,32 @@
 <script type="text/babel">
 
-let element = <p>Chores due <b></b>.</p>;
+class ChoreChartKiosk extends React.Component {
+  render() {
+    return (
+      <>
+        <p>Chore Chart</p>
+        <p>Week: {this.state.week}</p>
+        <div>
+          {doneButtons}
+        </div>
+      </>
+    );
+  }
+
+  doneButtons() {
+    return ["Alex", "Alice", "Bob"].map((name) => {
+      return <p><input type="button" onClick={doneClicked}>{name}</input></p>;
+    })
+  }
+
+  doneClicked(e) {
+    alert(e.target.value);
+  }
+}
 
 ReactDOM.render(
-  element,
-  document.getElementById('root')
+  <ChoreChartKiosk />,
+  document.getElementById('react-root')
 );
 
 </script>
