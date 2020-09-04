@@ -1,0 +1,28 @@
+{
+  "name": "chore-chart-kiosk",
+  "version": "1.0.0",
+  "description": "This Apps Script project automatically maintains a weekly chore chart in a Google Sheet. The chore chart is for community houses to keep track of who household cleaning and maintenance chores are assigned to and the status of those chores getting done for each week. Every week, housemates check off their chores when they're done so it is easy to see who isn't doing chores on time. This project also hosts a web app that can be displayed on a kiosk that makes it easier for housemates to check off their chores as an alternative to opening a sheet on their phones.",
+  "main": "index.js",
+  "dependencies": {
+    "@types/google-apps-script": "^1.0.15",
+    "@types/jest": "^26.0.13",
+    "@types/node": "^14.6.3",
+    "@types/react": "^16.9.49",
+    "@types/react-dom": "^16.9.8",
+    "typescript": "^4.0.2"
+  },
+  "devDependencies": {},
+  "scripts": {
+    "test": ""
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/alexsapps/chorechartkiosk.git"
+  },
+  "author": "Alexander Taylor",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/alexsapps/chorechartkiosk/issues"
+  },
+  "homepage": "https://github.com/alexsapps/chorechartkiosk#readme"
+}
