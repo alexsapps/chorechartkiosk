@@ -29,16 +29,6 @@ const TEST_DATE = new Date(2020, 5 - 1 /* js sucks */, 10);
 
 type RichTextValue = GoogleAppsScript.Spreadsheet.RichTextValue;
 
-// Setup code for the web app associated with this project.
-// https://developers.google.com/apps-script/guides/html#code.gs_1
-function doGet() {
-  return HtmlService.createTemplateFromFile('Index').evaluate();
-}
-function include(filename: string) {
-  return HtmlService.createHtmlOutputFromFile(filename)
-      .getContent();
-}
-
 // Performs the weekly audit and prepares for next week.
 //
 // The audit must be run two days following the due date specified in the column header.
@@ -281,6 +271,79 @@ function isLate(status: string) {
   return status === '' || status === 'Done (unexcused late)' || status === 'Pending (unexcused late)';
 }
 
+type ChoreOnWeek = {
+  name: string;
+  email: string;
+  description: string;
+  status: string;
+  statusCell: GoogleAppsScript.Spreadsheet.Range;
+}
+
+class TrackerModel {
+  constructor(private sheet: GoogleAppsScript.Spreadsheet.Sheet) {}
+  
+  private findDateColumn(auditDate: Date) {
+    // Get the list of dates in the column headers.
+    const dates = this.sheet.getRange(DATE_COLUMN_HEADERS_RANGE)
+        .getValues()[0] /* 2D array has only one row; just get the row */;
+    
+    // Find the column for the audit date.
+    const dateColumn = dates.findIndex((v: Date) => v.getTime() === auditDate.getTime());
+    if (dateColumn === -1) throw new Error(`Could not find column for audit date of ${auditDate}.`);
+    
+    return dateColumn;
+  }
+
+  private meta() {
+    // Get all names and emails.
+    const metaCells = this.sheet.getRange("A2:B").getRichTextValues()
+
+    return metaCells
+      .map((metaRow) => {
+        let name = '';
+        let email = '';
+
+        // If no name, skip
+        if (metaRow[0]!.getText() !== '') {
+          // First, extract email and name for each row.
+          name = metaRow[0]!.getText();
+          const linkUrl = metaRow[0]!.getLinkUrl();
+          let email = '';
+          if (linkUrl != null && linkUrl.startsWith("mailto:")) {
+            email = linkUrl.substring(7);
+          }
+        }
+
+        const description = metaRow[1]!.getText();
+        return {name, email, description};
+    });
+  }
+
+  private statusesRange(auditDate: Date, count: number) {
+    const statusesRange =
+        this.sheet.getRange(
+          2,
+          3 + this.findDateColumn(auditDate),
+          count, 1);
+    return statusesRange;
+  }
+
+  getWeek(auditDate: Date) {
+    const meta = this.meta()
+    const statusesRange = this.statusesRange(auditDate, meta.length);
+    const statusValues = statusesRange.getValues();
+    const result = new Array<ChoreOnWeek>(meta.length);
+    for (let i = 0; i < meta.length; i++) {
+      result[i] = {
+        ...meta[i],
+        status: statusValues[i][0],
+        statusCell: statusesRange.getCell(i + 1, 0 + 1)
+      };
+    }
+    return result;
+  }
+}
+
 // Make explicit the status of empty cells. If a person has chores
 // and they didn't update the chart, mark them as late. If they
 // don't have chores, mark them as pardoned.
@@ -308,7 +371,7 @@ function fillEmptyCells(sheetId: string, auditDate: Date) {
   const statuses = statusesRange.getValues();
   for (let i = 0; i < statuses.length; i++) {
     // Skip if there is no person / chore on this row.
-    if (personCells[i]?.getText() === '') continue;
+    if (personCells[i]!.getText() === '') continue;
 
     // Person has no chores assigned.
     if (choreDescriptions[i] === '') {

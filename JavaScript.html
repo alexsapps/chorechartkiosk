@@ -1,26 +1,274 @@
 <script type="text/babel">
 
+const {
+  Button
+} = MaterialUI;
+
+class Week {
+  date;
+  chores;
+}
+
+class Chore {
+  title;
+  assignee;
+  due;
+}
+
+/**
+ * Fetches the state of the current week.
+ */
+async function fetchWeek(week) {
+  return new Promise((resolve, reject) => {
+    google.script.run
+      .withSuccessHandler((result) => { resolve(result); })
+      .withFailureHandler(reject)
+      .webappGetWeek(week.getTime());
+  });
+}
+
+async function updateStatus(auditDate, person, status) {
+  return new Promise((resolve, reject) => {
+    google.script.run
+      .withSuccessHandler((result) => { resolve(result); })
+      .withFailureHandler(reject)
+      .webappUpdateStatus(auditDate.getTime(), person, status);
+  });
+}
+
 class ChoreChartKiosk extends React.Component {
+  constructor(props) {
+    super(props)
+    
+    this.state = {
+      week: null
+    }
+  }
+
   render() {
+    if (this.state.week == null)
+      return <h1>Loading...</h1>;
+
+    return <ThisWeek week={this.state.week}
+                     auditDate={this.state.auditDate}
+                     onRefresh={this.fetchWeek.bind(this)} />;
+  }
+
+  async componentDidMount() {
+    this.fetchWeek();
+  }
+
+  static nextSunday(fromDate) {
+    let day = 0; // sunday
+    let date = new Date(fromDate);
+    date.setDate(
+      date.getDate() +
+      (
+        day + (7 - date.getDay())
+      ) % 7
+    );
+    date.setHours(0,0,0,0);
+    return date;
+  }
+
+  static getAuditDate() {
+    const date = new Date();
+
+    // Pretend it's 5 hours ago because due dates are the next day at 5 AM.
+    date.setHours(date.getHours() - 5);
+
+    // Pretend it's a day earlier because marking chore as done is due 1 day later.
+    date.setDate(date.getDate() - 1);
+
+    return ChoreChartKiosk.nextSunday(date);
+  }
+
+  msUntil5AM() {
+    const time = new Date();
+    const hours = ((5 - time.getHours()) + 24) % 24;
+    time.setHours(time.getHours() + hours, 0, 0, 0);
+    return time.getTime() - (new Date()).getTime();
+  }
+
+  async fetchWeek() {
+    if (this.state.timeout) {
+      clearTimeout(timeout);
+    }
+    this.setState({week: null});
+
+    const auditDate = ChoreChartKiosk.getAuditDate();
+
+    const week = await fetchWeek(auditDate);
+
+    // Refresh every day at 5 AM
+    const timeout = setTimeout(this.fetchWeek.bind(this), this.msUntil5AM());
+    console.log("Refresh in " + this.msUntil5AM());
+
+    this.setState({week, auditDate, timeout});    
+  }
+}
+
+class ThisWeek extends React.Component {
+  constructor(props) {
+    super(props)
+
+    this.state = {disabled: false};
+  }
+
+  render() {
+    const unfinishedChores = this.props.week.chores
+      .filter((chore) => chore.status === '' ||
+                        chore.status.startsWith('pending'));
+
+    const doneButtons = unfinishedChores.map((chore) => {
+        return (
+          <p key={chore.title}>
+            <StatusSelector display={chore.title + " - " + chore.assignee}
+                            onSelect={this.doneClicked.bind(this, chore.assignee)}
+                            expansionGroup={this}
+                            disabled={this.state.disabled}
+            />
+          </p>
+        );
+      });
+
     return (
-      <>
-        <p>Chore Chart</p>
-        <p>Week: {this.state.week}</p>
+      <div className="kiosk">
+        <h1>Dingo Kiosk: Chore Chart</h1>
+        <p>Chores due {this.dueDate().toString()}</p>
         <div>
-          {doneButtons}
+          { 
+            doneButtons.length > 0 ?
+            doneButtons :
+            <p>All chores have been taken care of!</p>
+          }
         </div>
-      </>
+      </div>
     );
   }
 
-  doneButtons() {
-    return ["Alex", "Alice", "Bob"].map((name) => {
-      return <p><input type="button" onClick={doneClicked}>{name}</input></p>;
-    })
+  dueDate() {
+    const date = new Date(this.props.auditDate);
+    date.setDate(date.getDate() + 1);
+    date.setHours(5);  // Due at 5 AM
+    return date;
   }
 
-  doneClicked(e) {
-    alert(e.target.value);
+  async doneClicked(assignee, e, status) {
+    this.setState({disabled: true});
+
+    let error = null;
+
+    try {
+      await updateStatus(this.props.auditDate, assignee, status);
+    } catch(err) {
+      error = err  
+    }
+
+    this.setState({disabled: false});
+
+    if (error)
+      throw error;
+    else
+      this.props.onRefresh();
+  }
+}
+
+class StatusSelector extends React.Component {
+  constructor(props) {
+    super(props);
+
+    this.state = {expanded: false};
+  }
+
+  // Globally, the single StatusSelector that is expanded, if any.
+  static expanded = null;
+
+  timeout = null;
+
+  render() {
+    const button = <Button variant="contained"
+                           color="primary"
+                           onClick={this.onClick.bind(this)}
+                           disabled={this.props.disabled}>
+                     {this.props.display}
+                   </Button>;
+    
+    if (!this.state.expanded) return button;
+
+    const statusOptions = [
+      "Done (on time)",
+      "Done (unexcused late)",
+      "Done (extension granted)",
+      "Pending (extension granted)",
+      "Pending (unexcused late)",
+      "Pardoned"
+    ];
+    const statusOptionButtons = statusOptions.map(status => 
+      <Button
+          key={status}
+          variant="contained"
+          color="secondary"
+          onClick={this.onClickStatus.bind(this, status)}
+          disabled={this.props.disabled}>
+        {status}
+      </Button>
+    );
+
+    return (
+      <React.Fragment>
+        {button}
+        {statusOptionButtons}
+        <Button
+          variant="contained"
+          onClick={this.onClick.bind(this)}
+          disabled={this.props.disabled}>
+          Cancel
+        </Button>
+      </React.Fragment>
+    );
+  }
+
+  onClick(e) {
+    const expanded = !this.state.expanded;
+    this.setState({expanded});
+
+    if (expanded) {
+      if (StatusSelector.expanded !== null) {
+        StatusSelector.expanded.onOtherExpanding();
+      }
+      StatusSelector.expanded = this;
+
+      // Auto collapse after 30 seconds.
+      this.timeout = setTimeout(() => {
+        this.setState({expanded: false})
+        if (StatusSelector.expanded === this) {
+          StatusSelector.expanded = null;
+        }
+      }, 30000);
+    } else {
+      StatusSelector.expanded = null;
+      clearTimeout(this.timeout);
+    }
+  }
+
+  // Ensure only one selector expanded globally.
+  onOtherExpanding() {
+    this.setState({expanded: false});
+    clearTimeout(this.timeout);
+  }
+
+  componentWillUnmount() {
+    if (StatusSelector.expanded === this) {
+      StatusSelector.expanded = null;
+      clearTimeout(this.timeout);
+    }
+  }
+
+  onClickStatus(status, e) {
+    console.log(status);
+    // TODO: probably shouldn't blindly forward 'e'.
+    this.props.onSelect(e, status);
   }
 }
 
