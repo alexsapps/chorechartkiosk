@@ -1,29 +1,17 @@
 <script type="text/babel">
 
+// Material UI import.
 const {
   Button
 } = MaterialUI;
 
-class Week {
-  date;
-  chores;
-}
-
-class Chore {
-  title;
-  assignee;
-  due;
-}
-
-/**
- * Fetches the state of the current week.
- */
-async function fetchWeek(week) {
+/** Fetches the state of the current week. */
+async function fetchWeek(auditDate) {
   return new Promise((resolve, reject) => {
     google.script.run
       .withSuccessHandler((result) => { resolve(result); })
       .withFailureHandler(reject)
-      .webappGetWeek(week.getTime());
+      .webappGetWeek(auditDate.getTime());
   });
 }
 
@@ -36,6 +24,7 @@ async function updateStatus(auditDate, person, status) {
   });
 }
 
+/** Higher order component for fetching data for this week and then displaying it. */
 class ChoreChartKiosk extends React.Component {
   constructor(props) {
     super(props)
@@ -51,13 +40,14 @@ class ChoreChartKiosk extends React.Component {
 
     return <ThisWeek week={this.state.week}
                      auditDate={this.state.auditDate}
-                     onRefresh={this.fetchWeek.bind(this)} />;
+                     onRefresh={this.fetchWeekContinuously.bind(this)} />;
   }
 
   async componentDidMount() {
-    this.fetchWeek();
+    this.fetchWeekContinuously();
   }
 
+  /** Gets the next Sunday following the given date. */
   static nextSunday(fromDate) {
     let day = 0; // sunday
     let date = new Date(fromDate);
@@ -71,6 +61,12 @@ class ChoreChartKiosk extends React.Component {
     return date;
   }
 
+  /**
+   * Determines which week of chores should be editable by the kiosk at the current time.
+   * 
+   * Once the deadline to update the chart has passed, the next week is shown. Housemates
+   * have 24 hours after chores are due to update the chart.
+   */
   static getAuditDate() {
     const date = new Date();
 
@@ -90,7 +86,11 @@ class ChoreChartKiosk extends React.Component {
     return time.getTime() - (new Date()).getTime();
   }
 
-  async fetchWeek() {
+  /**
+   * Fetches data for the current and updates the state.
+   * Also schedules another refresh for 5AM to keep the kiosk up to date even when housemates don't click any buttons.
+   */
+  async fetchWeekContinuously() {
     if (this.state.timeout) {
       clearTimeout(timeout);
     }
@@ -101,13 +101,17 @@ class ChoreChartKiosk extends React.Component {
     const week = await fetchWeek(auditDate);
 
     // Refresh every day at 5 AM
-    const timeout = setTimeout(this.fetchWeek.bind(this), this.msUntil5AM());
+    const timeout = setTimeout(this.fetchWeekContinuously.bind(this), this.msUntil5AM());
     console.log("Refresh in " + this.msUntil5AM());
 
     this.setState({week, auditDate, timeout});    
   }
 }
 
+/**
+ * Component for displaying the chores that are due for a given week and allowing housemates to update the
+ * state of their chore (usually to mark it as done).
+ */
 class ThisWeek extends React.Component {
   constructor(props) {
     super(props)
@@ -174,6 +178,14 @@ class ThisWeek extends React.Component {
   }
 }
 
+/**
+ * Component for displaying a chore and changing its status (e.g. done, late, pardoned).
+ * 
+ * When a chore is clicked, a list of status options is displayed (the current status is not shown).
+ * Automatically hides the list when no selection is made after a certain amount of time.
+ * 
+ * Globally ensures the status list is only shown for only one `StatusSelector` at a time.
+ */
 class StatusSelector extends React.Component {
   constructor(props) {
     super(props);
@@ -272,6 +284,7 @@ class StatusSelector extends React.Component {
   }
 }
 
+// Start the React app when this script loads.
 ReactDOM.render(
   <ChoreChartKiosk />,
   document.getElementById('react-root')
