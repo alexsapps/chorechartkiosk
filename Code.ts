@@ -361,7 +361,7 @@ function fillEmptyCells(sheetId: string, auditDate: Date) {
   // Get all names and emails.
   const personCells = sheet.getRange(NAMES_AND_EMAILS_RANGE).getValues()
       // Flatten 2D array with 1 column into a 1D array.
-      .map((a: (RichTextValue|null)[]) => a[0]);
+      .map((a: string[]) => a[0]);
   // Get the names of the chores. Parallel array with `personCells`.
   const choreDescriptions = sheet.getRange(CHORE_TITLES_RANGE).getValues()
       // Flatten 2D array with 1 column into a 1D array.
@@ -371,7 +371,7 @@ function fillEmptyCells(sheetId: string, auditDate: Date) {
   const statuses = statusesRange.getValues();
   for (let i = 0; i < statuses.length; i++) {
     // Skip if there is no person / chore on this row.
-    if (personCells[i]!.getText() === '') continue;
+    if (personCells[i] === '') continue;
 
     // Person has no chores assigned.
     if (choreDescriptions[i] === '') {
@@ -402,7 +402,7 @@ function prepareNextWeek(sheetId: string, nextAuditDate: Date) {
   // Work backwards from the end so we don't mess up the indexing.
   for (let i = sheet.getMaxColumns(); i > 2; i--) {
     const dateValue = sheet.getRange(1, i).getValue();
-    if (dateValue instanceof Date && dateValue.getTime() < oldestDate.getMilliseconds()) {
+    if (dateValue instanceof Date && dateValue.getTime() < oldestDate.getTime()) {
       sheet.deleteColumn(i);
     }
   }
